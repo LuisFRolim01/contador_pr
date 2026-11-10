@@ -5,15 +5,10 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>GitHub PR & Earnings Dashboard</title>
   
-  <!-- Favicon para Navegadores -->
   <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='%2322c55e' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='18' cy='18' r='3'%3E%3C/circle%3E%3Ccircle cx='6' cy='6' r='3'%3E%3C/circle%3E%3Cpath d='M6 9v12'%3E%3C/path%3E%3Cpath d='M13 6h3a2 2 0 0 1 2 2v7'%3E%3C/path%3E%3Cpolyline points='9 9 12 6 9 3'%3E%3C/polyline%3E%3C/svg%3E">
   
-  <!-- Ícone customizado para iOS / Home Screen do iPhone (Evita o 'G') -->
   <link rel="apple-touch-icon" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAALQAAAC0CAYAAAA9zQlYAAAACXBIWXMAAAsTAAALEwEAmpwYAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAABMSURBVHgB7cEBDQAAAMKg909tDwcUAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAPgbDWYAAAEVd5EAAAAASUVORK5CYII=">
-  <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 
-  <!-- Tailwind CSS CDN -->
   <script src="https://cdn.tailwindcss.com"></script>
   <script>
     tailwind.config = {
@@ -21,116 +16,436 @@
       theme: {
         extend: {
           colors: {
-            brand: {
-              50: '#f0fdf4',
-              100: '#dcfce7',
-              500: '#22c55e',
-              600: '#16a34a',
-              700: '#15803d',
-            }
+            brand: { 500: '#22c55e', 600: '#16a34a' }
           }
         }
       }
     }
   </script>
-  <!-- Lucide Icons -->
   <script src="https://unpkg.com/lucide@latest"></script>
 </head>
 <body class="bg-gray-950 text-gray-100 font-sans min-h-screen antialiased flex flex-col selection:bg-emerald-500/30">
 
-  <!-- BANNER DE ERRO -->
-  <div id="error-banner" class="hidden bg-red-900/80 border-b border-red-700 text-red-200 px-4 py-3 text-xs sm:text-sm flex items-center justify-between">
+  <!-- BANNER DE ERRO / DEBUG -->
+  <div id="error-banner" class="hidden bg-red-900/90 border-b border-red-700 text-red-200 px-4 py-3 text-xs sm:text-sm flex items-center justify-between">
     <div class="flex items-center gap-2">
-      <i data-lucide="alert-circle" class="w-4 h-4 sm:w-5 sm:h-5 text-red-400 shrink-0"></i>
-      <span id="error-message">Ocorreu um erro ao buscar dados do GitHub.</span>
+      <i data-lucide="alert-circle" class="w-4 h-4 text-red-400 shrink-0"></i>
+      <span id="error-message">Erro de conexão.</span>
     </div>
-    <button onclick="hideError()" class="text-red-300 hover:text-white text-lg font-bold leading-none">&times;</button>
+    <button onclick="hideError()" class="text-red-300 hover:text-white font-bold">&times;</button>
   </div>
 
-  <div class="max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6 sm:space-y-8 flex-1">
+  <div class="max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6 flex-1">
 
-    <!-- HEADER / TOKEN INPUT -->
     <header class="flex flex-col lg:flex-row lg:items-center justify-between gap-4 border-b border-gray-800 pb-6">
       <div>
         <div class="flex items-center gap-3">
-          <div class="p-2 bg-emerald-500/10 border border-emerald-500/20 rounded-xl text-emerald-400 shrink-0">
+          <div class="p-2 bg-emerald-500/10 border border-emerald-500/20 rounded-xl text-emerald-400">
             <i data-lucide="git-pull-request" class="w-6 h-6"></i>
           </div>
           <h1 class="text-xl sm:text-2xl font-bold tracking-tight text-white">GitHub PR Tracker & Earnings</h1>
         </div>
-        <p class="text-xs text-gray-400 mt-1">
-          Acompanhe suas PRs agrupadas pelo mês de encerramento e estime seus ganhos.
-        </p>
+        <p class="text-xs text-gray-400 mt-1">Acompanhe suas PRs e estime seus rendimentos mensais via API do GitHub.</p>
       </div>
 
       <!-- PAINEL TOKEN -->
-      <div class="w-full lg:w-auto flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 bg-gray-900 border border-gray-800 p-2.5 rounded-xl">
-        <div class="relative flex-1 min-w-0 sm:min-w-[240px]">
+      <div class="w-full lg:w-auto flex flex-col sm:flex-row items-stretch sm:items-center gap-2 bg-gray-900 border border-gray-800 p-2.5 rounded-xl">
+        <div class="relative flex-1 min-w-0 sm:min-w-[260px]">
           <i data-lucide="key" class="w-4 h-4 text-gray-500 absolute left-3 top-1/2 -translate-y-1/2"></i>
           <input 
             type="password" 
             id="github-token" 
-            placeholder="GitHub Personal Access Token (repo)" 
-            class="w-full bg-gray-950 border border-gray-800 text-xs sm:text-sm text-gray-200 rounded-lg pl-9 pr-3 py-2 focus:outline-none focus:border-emerald-500 transition-colors placeholder:text-gray-600"
+            placeholder="Cole seu GitHub PAT (ex: ghp_...)" 
+            class="w-full bg-gray-950 border border-gray-800 text-xs sm:text-sm text-gray-200 rounded-lg pl-9 pr-3 py-2 focus:outline-none focus:border-emerald-500 placeholder:text-gray-600"
           />
         </div>
-        <button 
-          onclick="fetchGitHubPRs()" 
-          id="btn-fetch"
-          class="bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold px-4 py-2 rounded-lg transition-colors flex items-center justify-center gap-1.5 shadow-sm whitespace-nowrap"
-        >
-          <i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i>
-          <span>Carregar PRs Reais</span>
-        </button>
+        <div class="flex items-center gap-2">
+          <button 
+            onclick="testTokenConnection()" 
+            class="bg-gray-800 hover:bg-gray-700 text-gray-300 text-xs font-medium px-3 py-2 rounded-lg border border-gray-700 transition-colors whitespace-nowrap"
+          >
+            Testar Token
+          </button>
+          <button 
+            onclick="fetchGitHubPRs()" 
+            id="btn-fetch"
+            class="bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold px-4 py-2 rounded-lg transition-colors flex items-center justify-center gap-1.5 shadow-sm whitespace-nowrap"
+          >
+            <i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i>
+            <span>Carregar PRs</span>
+          </button>
+        </div>
       </div>
     </header>
 
-    <!-- STATUS DE AUTENTICAÇÃO / FLAG -->
+    <!-- FLAG DE SUCESSO -->
     <div id="auth-status-container" class="hidden">
-      <div class="bg-emerald-950/40 border border-emerald-500/30 px-4 py-2.5 rounded-xl flex items-center justify-between text-xs text-emerald-300">
+      <div class="bg-emerald-950/40 border border-emerald-500/30 px-4 py-3 rounded-xl flex items-center justify-between text-xs text-emerald-300">
         <div class="flex items-center gap-2">
           <i data-lucide="check-circle-2" class="w-4 h-4 text-emerald-400"></i>
-          <span>Autenticado com sucesso como <strong id="auth-username" class="text-white"></strong> via GitHub API</span>
+          <span>Autenticado com sucesso como <strong id="auth-username" class="text-white font-mono"></strong></span>
         </div>
-        <span class="text-[10px] bg-emerald-500/20 text-emerald-300 px-2 py-0.5 rounded font-mono">Token Ativo</span>
+        <span class="text-[10px] bg-emerald-500/20 text-emerald-300 px-2 py-0.5 rounded font-mono">PAT Válido</span>
       </div>
     </div>
 
-    <!-- CARDS DE METRICAS / KPIS -->
+    <!-- KPIS -->
     <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
       <div class="bg-gray-900/60 border border-gray-800 p-4 sm:p-5 rounded-xl flex items-center justify-between">
         <div>
           <p class="text-[10px] sm:text-xs font-medium text-gray-400 uppercase tracking-wider">PRs Mergeadas</p>
           <h3 id="kpi-merged" class="text-2xl sm:text-3xl font-extrabold text-emerald-400 mt-1">0</h3>
-          <p class="text-[10px] text-gray-500 mt-1 truncate">No filtro atual</p>
         </div>
-        <div class="p-2.5 sm:p-3 bg-emerald-500/10 rounded-xl text-emerald-400 border border-emerald-500/20 shrink-0">
-          <i data-lucide="git-merge" class="w-5 h-5 sm:w-6 sm:h-6"></i>
-        </div>
+        <div class="p-2.5 bg-emerald-500/10 rounded-xl text-emerald-400 border border-emerald-500/20"><i data-lucide="git-merge" class="w-5 h-5"></i></div>
       </div>
-
       <div class="bg-gray-900/60 border border-gray-800 p-4 sm:p-5 rounded-xl flex items-center justify-between">
         <div>
           <p class="text-[10px] sm:text-xs font-medium text-gray-400 uppercase tracking-wider">PRs Em Aberto</p>
           <h3 id="kpi-open" class="text-2xl sm:text-3xl font-extrabold text-amber-400 mt-1">0</h3>
-          <p class="text-[10px] text-gray-500 mt-1 truncate">Pendentes</p>
         </div>
-        <div class="p-2.5 sm:p-3 bg-amber-500/10 rounded-xl text-amber-400 border border-amber-500/20 shrink-0">
-          <i data-lucide="clock" class="w-5 h-5 sm:w-6 sm:h-6"></i>
-        </div>
+        <div class="p-2.5 bg-amber-500/10 rounded-xl text-amber-400 border border-amber-500/20"><i data-lucide="clock" class="w-5 h-5"></i></div>
       </div>
-
       <div class="bg-gray-900/60 border border-gray-800 p-4 sm:p-5 rounded-xl flex items-center justify-between">
         <div>
           <p class="text-[10px] sm:text-xs font-medium text-gray-400 uppercase tracking-wider">Tempo Médio</p>
           <h3 id="kpi-avg-time" class="text-2xl sm:text-3xl font-extrabold text-blue-400 mt-1">0d</h3>
-          <p class="text-[10px] text-gray-500 mt-1 truncate">Para conclusão</p>
         </div>
-        <div class="p-2.5 sm:p-3 bg-blue-500/10 rounded-xl text-blue-400 border border-blue-500/20 shrink-0">
-          <i data-lucide="timer" class="w-5 h-5 sm:w-6 sm:h-6"></i>
-        </div>
+        <div class="p-2.5 bg-blue-500/10 rounded-xl text-blue-400 border border-blue-500/20"><i data-lucide="timer" class="w-5 h-5"></i></div>
       </div>
-
       <div class="bg-gray-900/60 border border-gray-800 p-4 sm:p-5 rounded-xl flex items-center justify-between">
         <div>
-          <p class="text-[10px] sm
+          <p class="text-[10px] sm:text-xs font-medium text-gray-400 uppercase tracking-wider">Estimativa Total</p>
+          <h3 id="kpi-total-earnings" class="text-2xl sm:text-3xl font-extrabold text-purple-400 mt-1">R$ 0,00</h3>
+        </div>
+        <div class="p-2.5 bg-purple-500/10 rounded-xl text-purple-400 border border-purple-500/20"><i data-lucide="dollar-sign" class="w-5 h-5"></i></div>
+      </div>
+    </div>
+
+    <!-- CALCULADORA -->
+    <div class="bg-gray-900/70 border border-gray-800 rounded-2xl p-4 sm:p-6 shadow-xl space-y-4">
+      <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-gray-800 pb-3">
+        <div class="flex items-center gap-2">
+          <i data-lucide="calculator" class="w-5 h-5 text-emerald-400"></i>
+          <h2 class="text-base sm:text-lg font-bold text-gray-100">Calculadora de Rendimento por PR</h2>
+        </div>
+        <label class="flex items-center gap-2 cursor-pointer select-none text-xs text-gray-400">
+          <input type="checkbox" id="calc-include-open" onchange="renderApp()" class="w-4 h-4 rounded bg-gray-950 border-gray-700 text-emerald-600">
+          <span>Incluir PRs em Aberto no cálculo</span>
+        </label>
+      </div>
+
+      <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 items-end">
+        <div>
+          <label class="block text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5">Moeda</label>
+          <select id="calc-currency" onchange="renderApp()" class="w-full bg-gray-950 border border-gray-800 text-xs sm:text-sm text-gray-200 rounded-lg p-2.5 focus:outline-none focus:border-emerald-500">
+            <option value="BRL">Real Brasileiro (R$)</option>
+            <option value="USD">Dólar Americano ($)</option>
+            <option value="EUR">Euro (€)</option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5">Valor Padrão por PR</label>
+          <div class="relative">
+            <span id="currency-symbol" class="absolute left-3 top-1/2 -translate-y-1/2 text-xs text-gray-500">R$</span>
+            <input type="number" id="calc-default-rate" value="150" step="10" min="0" oninput="renderApp()" class="w-full bg-gray-950 border border-gray-800 text-xs sm:text-sm text-gray-200 rounded-lg pl-9 pr-3 py-2.5 focus:outline-none focus:border-emerald-500"/>
+          </div>
+        </div>
+        <div class="bg-gray-950 border border-gray-800 p-3 sm:p-4 rounded-xl flex items-center justify-between">
+          <div>
+            <span class="text-[10px] text-gray-400 block">Total Estimado</span>
+            <span id="calc-grand-total" class="text-xl sm:text-2xl font-black text-emerald-400">R$ 0,00</span>
+          </div>
+          <span class="text-[10px] bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-2 py-0.5 rounded font-mono">Dinâmico</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- LISTAGEM -->
+    <div class="space-y-4">
+      <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-4 bg-gray-900/40 p-3.5 rounded-xl border border-gray-800/60">
+        <div class="flex items-center gap-1 bg-gray-950 p-1 rounded-lg border border-gray-800 w-full lg:w-auto overflow-x-auto">
+          <button onclick="setTab('merged')" id="tab-merged" class="flex-1 lg:flex-none px-3 py-1.5 text-xs font-medium rounded-md transition-colors bg-emerald-600 text-white whitespace-nowrap">Mergeadas</button>
+          <button onclick="setTab('open')" id="tab-open" class="flex-1 lg:flex-none px-3 py-1.5 text-xs font-medium rounded-md transition-colors text-gray-400 hover:text-gray-200 whitespace-nowrap">Em Aberto</button>
+          <button onclick="setTab('all')" id="tab-all" class="flex-1 lg:flex-none px-3 py-1.5 text-xs font-medium rounded-md transition-colors text-gray-400 hover:text-gray-200 whitespace-nowrap">Todas</button>
+        </div>
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 w-full lg:w-auto">
+          <div class="flex items-center gap-2">
+            <label class="text-xs text-gray-400 font-medium whitespace-nowrap">Repo:</label>
+            <select id="filter-repo" onchange="renderApp()" class="w-full bg-gray-950 border border-gray-800 text-xs text-gray-200 rounded-lg px-2.5 py-1.5 focus:outline-none focus:border-emerald-500"><option value="ALL">Todos os Repositórios</option></select>
+          </div>
+          <div class="flex items-center gap-2">
+            <label class="text-xs text-gray-400 font-medium whitespace-nowrap">Mês:</label>
+            <select id="filter-month" onchange="renderApp()" class="w-full bg-gray-950 border border-gray-800 text-xs text-gray-200 rounded-lg px-2.5 py-1.5 focus:outline-none focus:border-emerald-500"><option value="ALL">Todos os Meses</option></select>
+          </div>
+        </div>
+      </div>
+      <div id="prs-container" class="space-y-3"></div>
+    </div>
+
+  </div>
+
+  <footer class="border-t border-gray-800 py-6 text-center text-xs text-gray-500 mt-auto px-4">
+    <p>GitHub PR Tracker & Earnings © 2026</p>
+  </footer>
+
+  <script>
+    let state = { prs: [], currentTab: 'merged', selectedRepo: 'ALL', selectedMonth: 'ALL', customRates: {} };
+
+    window.addEventListener('DOMContentLoaded', () => {
+      lucide.createIcons();
+      renderEmptyState();
+    });
+
+    function showError(msg) {
+      const banner = document.getElementById('error-banner');
+      document.getElementById('error-message').textContent = msg;
+      banner.classList.remove('hidden');
+    }
+
+    function hideError() {
+      document.getElementById('error-banner').classList.add('hidden');
+    }
+
+    async function testTokenConnection() {
+      const token = document.getElementById('github-token').value.trim();
+      hideError();
+      if (!token) {
+        showError('Insira um token no campo antes de testar.');
+        return;
+      }
+      try {
+        const res = await fetch('https://api.github.com/user', {
+          headers: { 'Accept': 'application/vnd.github.v3+json', 'Authorization': `token ${token}` }
+        });
+        if (!res.ok) throw new Error(`Status ${res.status}: Token inválido ou sem permissões.`);
+        const data = await res.json();
+        alert(`Sucesso! Conectado como @${data.login}. O token está funcionando perfeitamente.`);
+      } catch (err) {
+        showError(err.message);
+      }
+    }
+
+    async function fetchGitHubPRs() {
+      const token = document.getElementById('github-token').value.trim();
+      const btn = document.getElementById('btn-fetch');
+      hideError();
+
+      if (!token) {
+        showError('Por favor, insira seu Personal Access Token (PAT) do GitHub.');
+        return;
+      }
+
+      btn.disabled = true;
+      btn.classList.add('opacity-50');
+
+      try {
+        const headers = { 'Accept': 'application/vnd.github.v3+json', 'Authorization': `token ${token}` };
+
+        // 1. Validar usuário
+        const userRes = await fetch('https://api.github.com/user', { headers });
+        if (!userRes.ok) throw new Error('Token inválido ou expirado (Erro 401 Unauthorized).');
+        const userData = await userRes.json();
+        const username = userData.login;
+
+        document.getElementById('auth-username').textContent = `@${username}`;
+        document.getElementById('auth-status-container').classList.remove('hidden');
+
+        // 2. Buscar PRs usando o autor autenticado
+        const query = encodeURIComponent(`type:pr author:${username}`);
+        const searchRes = await fetch(`https://api.github.com/search/issues?q=${query}&per_page=100`, { headers });
+        
+        if (!searchRes.ok) {
+          const errBody = await searchRes.json().catch(() => ({}));
+          throw new Error(errBody.message || `Erro na API do GitHub (${searchRes.status}). Verifique se marcou o escopo 'repo'.`);
+        }
+
+        const searchData = await searchRes.json();
+        
+        state.prs = searchData.items.map(item => {
+          const repoFullName = item.repository_url ? item.repository_url.replace('https://api.github.com/repos/', '') : 'repo/desconhecido';
+          const isMerged = !!item.pull_request?.merged_at || item.state === 'closed';
+
+          return {
+            id: item.id,
+            number: item.number,
+            title: item.title,
+            repo: repoFullName,
+            state: item.state,
+            merged: isMerged,
+            created_at: item.created_at,
+            merged_at: item.pull_request?.merged_at || item.closed_at,
+            closed_at: item.closed_at,
+            url: item.html_url,
+            draft: item.draft || false
+          };
+        });
+
+        populateDropdowns();
+        renderApp();
+      } catch (err) {
+        showError(err.message || 'Erro ao comunicar com a API do GitHub.');
+      } finally {
+        btn.disabled = false;
+        btn.classList.remove('opacity-50');
+      }
+    }
+
+    function getPRMonthKey(pr) {
+      if (pr.merged_at) {
+        const date = new Date(pr.merged_at);
+        return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+      }
+      if (pr.closed_at) {
+        const date = new Date(pr.closed_at);
+        return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+      }
+      const date = new Date(pr.created_at);
+      return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+    }
+
+    function formatMonthName(monthKey) {
+      if (monthKey === 'ALL') return 'Todos os Meses';
+      const [year, month] = monthKey.split('-');
+      const date = new Date(year, parseInt(month) - 1, 1);
+      const str = date.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
+      return str.charAt(0).toUpperCase() + str.slice(1);
+    }
+
+    function populateDropdowns() {
+      const repoSelect = document.getElementById('filter-repo');
+      const monthSelect = document.getElementById('filter-month');
+
+      const currentRepo = repoSelect.value;
+      const currentMonth = monthSelect.value;
+
+      const repos = Array.from(new Set(state.prs.map(p => p.repo))).sort();
+      repoSelect.innerHTML = '<option value="ALL">Todos os Repositórios</option>' + 
+        repos.map(r => `<option value="${r}">${r}</option>`).join('');
+
+      const months = Array.from(new Set(state.prs.map(p => getPRMonthKey(p)))).sort().reverse();
+      monthSelect.innerHTML = '<option value="ALL">Todos os Meses</option>' + 
+        months.map(m => `<option value="${m}">${formatMonthName(m)}</option>`).join('');
+
+      if (repos.includes(currentRepo)) repoSelect.value = currentRepo;
+      if (months.includes(currentMonth)) monthSelect.value = currentMonth;
+    }
+
+    function setTab(tab) {
+      state.currentTab = tab;
+      ['merged', 'open', 'all'].forEach(t => {
+        const btn = document.getElementById(`tab-${t}`);
+        if (t === tab) {
+          btn.className = 'flex-1 lg:flex-none px-3 py-1.5 text-xs font-medium rounded-md transition-colors bg-emerald-600 text-white whitespace-nowrap';
+        } else {
+          btn.className = 'flex-1 lg:flex-none px-3 py-1.5 text-xs font-medium rounded-md transition-colors text-gray-400 hover:text-gray-200 whitespace-nowrap';
+        }
+      });
+      renderApp();
+    }
+
+    function renderEmptyState() {
+      document.getElementById('prs-container').innerHTML = `
+        <div class="bg-gray-900/40 border border-gray-800 rounded-xl p-8 sm:p-12 text-center text-gray-400 space-y-3">
+          <div class="p-3 bg-gray-800/60 rounded-full w-fit mx-auto text-emerald-400">
+            <i data-lucide="github" class="w-8 h-8"></i>
+          </div>
+          <h3 class="text-base font-semibold text-gray-200">Aguardando conexão com o GitHub</h3>
+          <p class="text-xs text-gray-500 max-w-md mx-auto">
+            Insira o seu <strong>Personal Access Token (PAT)</strong>, clique em <em>"Testar Token"</em> para validar e depois em <em>"Carregar PRs"</em>.
+          </p>
+        </div>
+      `;
+      lucide.createIcons();
+    }
+
+    function renderApp() {
+      if (state.prs.length === 0) {
+        renderEmptyState();
+        return;
+      }
+
+      state.selectedRepo = document.getElementById('filter-repo').value;
+      state.selectedMonth = document.getElementById('filter-month').value;
+
+      const currency = document.getElementById('calc-currency').value;
+      const symbolMap = { BRL: 'R$', USD: '$', EUR: '€' };
+      document.getElementById('currency-symbol').textContent = symbolMap[currency] || 'R$';
+
+      const defaultRate = parseFloat(document.getElementById('calc-default-rate').value) || 0;
+      const includeOpenInCalc = document.getElementById('calc-include-open').checked;
+
+      const filteredPRs = state.prs.filter(pr => {
+        if (state.currentTab === 'merged' && !pr.merged) return false;
+        if (state.currentTab === 'open' && pr.state !== 'open') return false;
+        if (state.selectedRepo !== 'ALL' && pr.repo !== state.selectedRepo) return false;
+        if (state.selectedMonth !== 'ALL' && getPRMonthKey(pr) !== state.selectedMonth) return false;
+        return true;
+      });
+
+      const mergedPRs = filteredPRs.filter(p => p.merged);
+      const openPRs = filteredPRs.filter(p => p.state === 'open');
+
+      document.getElementById('kpi-merged').textContent = mergedPRs.length;
+      document.getElementById('kpi-open').textContent = openPRs.length;
+
+      let totalDays = 0, closedCount = 0;
+      mergedPRs.forEach(p => {
+        if (p.merged_at && p.created_at) {
+          totalDays += (new Date(p.merged_at) - new Date(p.created_at)) / (1000 * 60 * 60 * 24);
+          closedCount++;
+        }
+      });
+      document.getElementById('kpi-avg-time').textContent = `${closedCount > 0 ? (totalDays / closedCount).toFixed(1) : 0}d`;
+
+      let totalValue = 0;
+      filteredPRs.forEach(pr => {
+        if (pr.merged || (includeOpenInCalc && pr.state === 'open')) {
+          totalValue += state.customRates[pr.id] !== undefined ? state.customRates[pr.id] : defaultRate;
+        }
+      });
+
+      const formattedTotal = new Intl.NumberFormat('pt-BR', { style: 'currency', currency }).format(totalValue);
+      document.getElementById('kpi-total-earnings').textContent = formattedTotal;
+      document.getElementById('calc-grand-total').textContent = formattedTotal;
+
+      const container = document.getElementById('prs-container');
+      if (filteredPRs.length === 0) {
+        container.innerHTML = `<div class="bg-gray-900/40 border border-gray-800 rounded-xl p-8 text-center text-gray-500 text-xs">Nenhuma Pull Request encontrada com estes filtros.</div>`;
+        lucide.createIcons();
+        return;
+      }
+
+      container.innerHTML = filteredPRs.map(pr => {
+        const rateValue = state.customRates[pr.id] !== undefined ? state.customRates[pr.id] : defaultRate;
+        const monthKey = getPRMonthKey(pr);
+
+        return `
+          <div class="bg-gray-900/60 border border-gray-800/80 rounded-xl p-3.5 sm:p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div class="space-y-1.5 flex-1 min-w-0">
+              <div class="flex flex-wrap items-center gap-1.5">
+                ${pr.merged ? `<span class="bg-purple-500/10 text-purple-400 border border-purple-500/20 text-[10px] font-semibold px-2 py-0.5 rounded-full">Mergeada</span>` : `<span class="bg-amber-500/10 text-amber-400 border border-amber-500/20 text-[10px] font-semibold px-2 py-0.5 rounded-full">Em Aberto</span>`}
+                <span class="text-xs font-mono text-gray-400">${pr.repo}</span>
+                <span class="text-xs text-gray-600 font-mono">#${pr.number}</span>
+              </div>
+              <h4 class="text-xs sm:text-sm font-semibold text-gray-100 hover:text-emerald-400 truncate">
+                <a href="${pr.url}" target="_blank" rel="noopener noreferrer">${pr.title}</a>
+              </h4>
+              <div class="text-[11px] text-gray-400">Mês Contábil: <strong class="text-gray-200">${formatMonthName(monthKey)}</strong></div>
+            </div>
+            <div class="flex items-center gap-1 bg-gray-950 p-2 rounded-lg border border-gray-800">
+              <span class="text-xs text-gray-400">${symbolMap[currency]}</span>
+              <input type="number" value="${rateValue}" onchange="updateCustomRate(${pr.id}, this.value)" class="w-20 bg-gray-900 border border-gray-700 rounded text-xs text-right text-emerald-400 px-2 py-1 font-mono focus:outline-none focus:border-emerald-500"/>
+            </div>
+          </div>
+        `;
+      }).join('');
+      lucide.createIcons();
+    }
+
+    function updateCustomRate(prId, val) {
+      const parsed = parseFloat(val);
+      if (!isNaN(parsed)) { state.customRates[prId] = parsed; renderApp(); }
+    }
+  </script>
+</body>
+</html>
