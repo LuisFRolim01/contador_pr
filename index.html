@@ -90,13 +90,20 @@
     </div>
 
     <!-- KPIS -->
-    <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+    <div class="grid grid-cols-2 lg:grid-cols-5 gap-3 sm:gap-4">
       <div class="bg-gray-900/60 border border-gray-800 p-4 sm:p-5 rounded-xl flex items-center justify-between">
         <div>
           <p class="text-[10px] sm:text-xs font-medium text-gray-400 uppercase tracking-wider">PRs Mergeadas</p>
           <h3 id="kpi-merged" class="text-2xl sm:text-3xl font-extrabold text-emerald-400 mt-1">0</h3>
         </div>
         <div class="p-2.5 bg-emerald-500/10 rounded-xl text-emerald-400 border border-emerald-500/20"><i data-lucide="git-merge" class="w-5 h-5"></i></div>
+      </div>
+      <div class="bg-gray-900/60 border border-gray-800 p-4 sm:p-5 rounded-xl flex items-center justify-between">
+        <div>
+          <p class="text-[10px] sm:text-xs font-medium text-gray-400 uppercase tracking-wider">PRs Fechadas</p>
+          <h3 id="kpi-closed" class="text-2xl sm:text-3xl font-extrabold text-red-400 mt-1">0</h3>
+        </div>
+        <div class="p-2.5 bg-red-500/10 rounded-xl text-red-400 border border-red-500/20"><i data-lucide="git-pull-request-closed" class="w-5 h-5"></i></div>
       </div>
       <div class="bg-gray-900/60 border border-gray-800 p-4 sm:p-5 rounded-xl flex items-center justify-between">
         <div>
@@ -165,6 +172,7 @@
       <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-4 bg-gray-900/40 p-3.5 rounded-xl border border-gray-800/60">
         <div class="flex items-center gap-1 bg-gray-950 p-1 rounded-lg border border-gray-800 w-full lg:w-auto overflow-x-auto">
           <button onclick="setTab('merged')" id="tab-merged" class="flex-1 lg:flex-none px-3 py-1.5 text-xs font-medium rounded-md transition-colors bg-emerald-600 text-white whitespace-nowrap">Mergeadas</button>
+          <button onclick="setTab('closed')" id="tab-closed" class="flex-1 lg:flex-none px-3 py-1.5 text-xs font-medium rounded-md transition-colors text-gray-400 hover:text-gray-200 whitespace-nowrap">Fechadas</button>
           <button onclick="setTab('open')" id="tab-open" class="flex-1 lg:flex-none px-3 py-1.5 text-xs font-medium rounded-md transition-colors text-gray-400 hover:text-gray-200 whitespace-nowrap">Em Aberto</button>
           <button onclick="setTab('all')" id="tab-all" class="flex-1 lg:flex-none px-3 py-1.5 text-xs font-medium rounded-md transition-colors text-gray-400 hover:text-gray-200 whitespace-nowrap">Todas</button>
         </div>
@@ -190,6 +198,12 @@
 
   <script>
     let state = { prs: [], currentTab: 'merged', selectedRepo: 'ALL', selectedMonth: 'ALL', customRates: {} };
+
+    const STATUS_BADGES = {
+      merged: `<span class="bg-purple-500/10 text-purple-400 border border-purple-500/20 text-[10px] font-semibold px-2 py-0.5 rounded-full">Mergeada</span>`,
+      closed: `<span class="bg-red-500/10 text-red-400 border border-red-500/20 text-[10px] font-semibold px-2 py-0.5 rounded-full">Fechada</span>`,
+      open: `<span class="bg-amber-500/10 text-amber-400 border border-amber-500/20 text-[10px] font-semibold px-2 py-0.5 rounded-full">Em Aberto</span>`
+    };
 
     window.addEventListener('DOMContentLoaded', () => {
       lucide.createIcons();
@@ -263,7 +277,9 @@
         
         state.prs = searchData.items.map(item => {
           const repoFullName = item.repository_url ? item.repository_url.replace('https://api.github.com/repos/', '') : 'repo/desconhecido';
-          const isMerged = !!item.pull_request?.merged_at || item.state === 'closed';
+          // A busca devolve state 'open' ou 'closed'; uma PR fechada só foi mergeada se tiver merged_at.
+          const mergedAt = item.pull_request?.merged_at || null;
+          const status = item.state === 'open' ? 'open' : (mergedAt ? 'merged' : 'closed');
 
           return {
             id: item.id,
@@ -271,9 +287,10 @@
             title: item.title,
             repo: repoFullName,
             state: item.state,
-            merged: isMerged,
+            status,
+            merged: status === 'merged',
             created_at: item.created_at,
-            merged_at: item.pull_request?.merged_at || item.closed_at,
+            merged_at: mergedAt,
             closed_at: item.closed_at,
             url: item.html_url,
             draft: item.draft || false
@@ -332,7 +349,7 @@
 
     function setTab(tab) {
       state.currentTab = tab;
-      ['merged', 'open', 'all'].forEach(t => {
+      ['merged', 'closed', 'open', 'all'].forEach(t => {
         const btn = document.getElementById(`tab-${t}`);
         if (t === tab) {
           btn.className = 'flex-1 lg:flex-none px-3 py-1.5 text-xs font-medium rounded-md transition-colors bg-emerald-600 text-white whitespace-nowrap';
@@ -375,18 +392,19 @@
       const includeOpenInCalc = document.getElementById('calc-include-open').checked;
 
       const filteredPRs = state.prs.filter(pr => {
-        if (state.currentTab === 'merged' && !pr.merged) return false;
-        if (state.currentTab === 'open' && pr.state !== 'open') return false;
+        if (state.currentTab !== 'all' && pr.status !== state.currentTab) return false;
         if (state.selectedRepo !== 'ALL' && pr.repo !== state.selectedRepo) return false;
         if (state.selectedMonth !== 'ALL' && getPRMonthKey(pr) !== state.selectedMonth) return false;
         return true;
       });
 
-      const mergedPRs = filteredPRs.filter(p => p.merged);
-      const openPRs = filteredPRs.filter(p => p.state === 'open');
+      const mergedPRs = filteredPRs.filter(p => p.status === 'merged');
+      const openPRs = filteredPRs.filter(p => p.status === 'open');
+      const closedPRs = filteredPRs.filter(p => p.status === 'closed');
 
       document.getElementById('kpi-merged').textContent = mergedPRs.length;
       document.getElementById('kpi-open').textContent = openPRs.length;
+      document.getElementById('kpi-closed').textContent = closedPRs.length;
 
       let totalDays = 0, closedCount = 0;
       mergedPRs.forEach(p => {
@@ -399,7 +417,7 @@
 
       let totalValue = 0;
       filteredPRs.forEach(pr => {
-        if (pr.merged || (includeOpenInCalc && pr.state === 'open')) {
+        if (pr.status === 'merged' || (includeOpenInCalc && pr.status === 'open')) {
           totalValue += state.customRates[pr.id] !== undefined ? state.customRates[pr.id] : defaultRate;
         }
       });
@@ -423,7 +441,7 @@
           <div class="bg-gray-900/60 border border-gray-800/80 rounded-xl p-3.5 sm:p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div class="space-y-1.5 flex-1 min-w-0">
               <div class="flex flex-wrap items-center gap-1.5">
-                ${pr.merged ? `<span class="bg-purple-500/10 text-purple-400 border border-purple-500/20 text-[10px] font-semibold px-2 py-0.5 rounded-full">Mergeada</span>` : `<span class="bg-amber-500/10 text-amber-400 border border-amber-500/20 text-[10px] font-semibold px-2 py-0.5 rounded-full">Em Aberto</span>`}
+                ${STATUS_BADGES[pr.status]}
                 <span class="text-xs font-mono text-gray-400">${pr.repo}</span>
                 <span class="text-xs text-gray-600 font-mono">#${pr.number}</span>
               </div>
@@ -432,10 +450,12 @@
               </h4>
               <div class="text-[11px] text-gray-400">Mês Contábil: <strong class="text-gray-200">${formatMonthName(monthKey)}</strong></div>
             </div>
-            <div class="flex items-center gap-1 bg-gray-950 p-2 rounded-lg border border-gray-800">
+            ${pr.status === 'closed'
+              ? `<div class="text-[11px] text-gray-500 bg-gray-950 px-3 py-2 rounded-lg border border-gray-800">Fechada sem merge: não entra no cálculo</div>`
+              : `<div class="flex items-center gap-1 bg-gray-950 p-2 rounded-lg border border-gray-800">
               <span class="text-xs text-gray-400">${symbolMap[currency]}</span>
               <input type="number" value="${rateValue}" onchange="updateCustomRate(${pr.id}, this.value)" class="w-20 bg-gray-900 border border-gray-700 rounded text-xs text-right text-emerald-400 px-2 py-1 font-mono focus:outline-none focus:border-emerald-500"/>
-            </div>
+            </div>`}
           </div>
         `;
       }).join('');
