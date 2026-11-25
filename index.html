@@ -89,6 +89,14 @@
       </div>
     </div>
 
+    <!-- NAVEGAÇÃO -->
+    <nav class="flex items-center gap-1 bg-gray-900 p-1 rounded-xl border border-gray-800 w-fit" aria-label="Seções">
+      <button onclick="setView('painel')" id="nav-painel" class="flex items-center gap-1.5 px-4 py-2 text-xs sm:text-sm font-semibold rounded-lg transition-colors"><i data-lucide="layout-dashboard" class="w-4 h-4"></i>Painel</button>
+      <button onclick="setView('relatorios')" id="nav-relatorios" class="flex items-center gap-1.5 px-4 py-2 text-xs sm:text-sm font-semibold rounded-lg transition-colors"><i data-lucide="file-bar-chart" class="w-4 h-4"></i>Relatórios</button>
+    </nav>
+
+    <div id="view-painel" class="space-y-6">
+
     <!-- KPIS -->
     <div class="grid grid-cols-2 lg:grid-cols-5 gap-3 sm:gap-4">
       <div class="bg-gray-900/60 border border-gray-800 p-4 sm:p-5 rounded-xl flex items-center justify-between">
@@ -186,7 +194,7 @@
         <div class="flex flex-col sm:flex-row sm:items-center gap-3 w-full lg:w-auto">
           <div class="flex items-center gap-2">
             <span class="text-xs text-gray-400 font-medium whitespace-nowrap">Repos:</span>
-            <div id="filter-repos" class="flex flex-wrap gap-1.5"></div>
+            <div class="filtro-repos flex flex-wrap gap-1.5"></div>
           </div>
           <div class="flex items-center gap-2">
             <label class="text-xs text-gray-400 font-medium whitespace-nowrap">Mês:</label>
@@ -195,6 +203,29 @@
         </div>
       </div>
       <div id="prs-container" class="space-y-3"></div>
+    </div>
+
+    </div><!-- /view-painel -->
+
+    <!-- RELATÓRIOS -->
+    <div id="view-relatorios" class="hidden space-y-6">
+      <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-3 bg-gray-900/40 p-3.5 rounded-xl border border-gray-800/60">
+        <div>
+          <h2 class="text-base sm:text-lg font-bold text-gray-100">Relatório mensal</h2>
+          <p class="text-[11px] text-gray-500">Mês contábil = mês do merge. A variação compara com o mês anterior.</p>
+        </div>
+        <div class="flex flex-col sm:flex-row sm:items-center gap-3">
+          <div class="flex items-center gap-2">
+            <span class="text-xs text-gray-400 font-medium whitespace-nowrap">Repos:</span>
+            <div class="filtro-repos flex flex-wrap gap-1.5"></div>
+          </div>
+          <div class="flex items-center gap-2">
+            <label for="relatorio-mes" class="text-xs text-gray-400 font-medium whitespace-nowrap">Mês:</label>
+            <select id="relatorio-mes" onchange="renderRelatorio()" class="bg-gray-950 border border-gray-800 text-xs text-gray-200 rounded-lg px-2.5 py-1.5 focus:outline-none focus:border-emerald-500"></select>
+          </div>
+        </div>
+      </div>
+      <div id="relatorio-conteudo" class="space-y-6"></div>
     </div>
 
   </div>
@@ -220,7 +251,7 @@
     };
 
     function renderFiltroRepos() {
-      document.getElementById('filter-repos').innerHTML = REPOS.map(r => {
+      const html = REPOS.map(r => {
         const ativo = state.selectedRepos.has(r.fullName);
         const cls = ativo
           ? 'bg-emerald-600 text-white border-emerald-500'
@@ -229,6 +260,7 @@
           class="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium rounded-lg border transition-colors whitespace-nowrap ${cls}">
           <span class="inline-block w-3 h-3 rounded-sm border ${ativo ? 'bg-white border-white' : 'border-gray-600'}"></span>${r.nome}</button>`;
       }).join('');
+      document.querySelectorAll('.filtro-repos').forEach(el => { el.innerHTML = html; });
     }
 
     // Pelo menos um repositório fica marcado: desmarcar o último não faz nada.
@@ -241,6 +273,17 @@
       }
       renderFiltroRepos();
       renderApp();
+      renderRelatorio();
+    }
+
+    function setView(view) {
+      ['painel', 'relatorios'].forEach(v => {
+        const ativo = v === view;
+        document.getElementById(`view-${v}`).classList.toggle('hidden', !ativo);
+        document.getElementById(`nav-${v}`).className = 'flex items-center gap-1.5 px-4 py-2 text-xs sm:text-sm font-semibold rounded-lg transition-colors ' +
+          (ativo ? 'bg-emerald-600 text-white' : 'text-gray-400 hover:text-gray-200');
+      });
+      if (view === 'relatorios') renderRelatorio();
     }
 
     function selecionarMes(monthKey) {
@@ -309,9 +352,273 @@
       await Promise.all(Array.from({ length: 6 }, trabalhar));
     }
 
+    // ---------- RELATÓRIOS ----------
+
+    const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    const chaveDoMes = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+    function mesAnterior(chave, n = 1) {
+      const [a, m] = chave.split('-').map(Number);
+      return chaveDoMes(new Date(a, m - 1 - n, 1));
+    }
+    function mesCurto(chave) {
+      const [a, m] = chave.split('-').map(Number);
+      return new Date(a, m - 1, 1).toLocaleDateString('pt-BR', { month: 'short' }).replace('.', '') + '/' + String(a).slice(2);
+    }
+    const diasAteMerge = pr => (new Date(pr.merged_at) - new Date(pr.created_at)) / 86400000;
+    const fmtDias = d => d == null ? '—' : `${d.toFixed(1).replace('.', ',')} d`;
+    const fmtPct = v => v == null ? '—' : `${Math.round(v * 100)}%`;
+    const fmtNum = v => new Intl.NumberFormat('pt-BR').format(v);
+    function mediana(xs) {
+      if (!xs.length) return null;
+      const s = [...xs].sort((a, b) => a - b), m = Math.floor(s.length / 2);
+      return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
+    }
+
+    // Números de um mês, só dos repos marcados.
+    function metricasDoMes(chave) {
+      const prs = state.prs.filter(p => state.selectedRepos.has(p.repo));
+      const merged = prs.filter(p => p.status === 'merged' && getPRMonthKey(p) === chave)
+        .sort((a, b) => new Date(a.merged_at) - new Date(b.merged_at));
+      const fechadas = prs.filter(p => p.status === 'closed' && getPRMonthKey(p) === chave);
+      const criadas = prs.filter(p => chaveDoMes(new Date(p.created_at)) === chave);
+      const valor = merged.reduce((a, p) => a + valorDaPR(p), 0);
+      const dias = merged.map(diasAteMerge);
+      const comTamanho = merged.filter(p => linhasDaPR(p) != null);
+      const linhas = comTamanho.reduce((a, p) => a + linhasDaPR(p), 0);
+      return {
+        chave, merged, fechadas, criadas, valor,
+        ticket: merged.length ? valor / merged.length : null,
+        tempoMedio: dias.length ? dias.reduce((a, b) => a + b, 0) / dias.length : null,
+        tempoMediano: mediana(dias),
+        taxaMerge: merged.length + fechadas.length ? merged.length / (merged.length + fechadas.length) : null,
+        linhas, linhasPorPR: comTamanho.length ? linhas / comTamanho.length : null
+      };
+    }
+
+    // Variação contra o mês anterior. menorEhMelhor inverte a cor (ex.: tempo até o merge).
+    function variacao(atual, anterior, rotuloAnterior, menorEhMelhor = false) {
+      if (atual == null || anterior == null) return `<span class="text-gray-500">sem base em ${rotuloAnterior}</span>`;
+      if (anterior === 0) return atual === 0
+        ? `<span class="text-gray-500">igual a ${rotuloAnterior}</span>`
+        : `<span class="text-gray-400">${rotuloAnterior}: 0</span>`;
+      const pct = (atual - anterior) / Math.abs(anterior);
+      if (Math.abs(pct) < 0.005) return `<span class="text-gray-500">= ${rotuloAnterior}</span>`;
+      const subiu = pct > 0, bom = menorEhMelhor ? !subiu : subiu;
+      return `<span class="${bom ? 'text-emerald-400' : 'text-rose-400'}">${subiu ? '▲' : '▼'} ${Math.abs(Math.round(pct * 100))}%</span> <span class="text-gray-500">vs ${rotuloAnterior}</span>`;
+    }
+
+    function cartao(titulo, valor, detalhe, rodape) {
+      return `<div class="bg-gray-900/60 border border-gray-800 p-4 rounded-xl space-y-1">
+        <p class="text-[10px] sm:text-xs font-medium text-gray-400 uppercase tracking-wider">${titulo}</p>
+        <p class="text-xl sm:text-2xl font-extrabold text-gray-100">${valor}</p>
+        ${detalhe ? `<p class="text-[11px] text-gray-400">${detalhe}</p>` : ''}
+        ${rodape ? `<p class="text-[11px]">${rodape}</p>` : ''}
+      </div>`;
+    }
+
+    function popularMesesRelatorio() {
+      const select = document.getElementById('relatorio-mes');
+      const atual = select.value;
+      const prs = state.prs.filter(p => state.selectedRepos.has(p.repo));
+      const meses = Array.from(new Set(prs.map(getPRMonthKey))).sort().reverse();
+      select.innerHTML = meses.map(m => `<option value="${m}">${formatMonthName(m)}</option>`).join('');
+      // Padrão: o mês mais recente com PR mergeada.
+      const comMerge = prs.filter(p => p.status === 'merged').map(getPRMonthKey).sort().reverse()[0];
+      select.value = meses.includes(atual) ? atual : (comMerge || meses[0] || '');
+    }
+
+    function renderRelatorio() {
+      const conteudo = document.getElementById('relatorio-conteudo');
+      if (state.prs.length === 0) {
+        conteudo.innerHTML = `<div class="bg-gray-900/40 border border-gray-800 rounded-xl p-8 text-center text-gray-500 text-xs">Carregue as PRs para montar o relatório.</div>`;
+        return;
+      }
+      popularMesesRelatorio();
+      const chave = document.getElementById('relatorio-mes').value;
+      const m = metricasDoMes(chave);
+      const ant = metricasDoMes(mesAnterior(chave));
+      const rotAnt = mesCurto(ant.chave);
+      const abertas = state.prs.filter(p => p.status === 'open' && state.selectedRepos.has(p.repo));
+      const previsaoAbertas = abertas.reduce((a, p) => a + valorDaPR(p), 0);
+
+      const indicadores = `
+        <section class="space-y-3">
+          <h3 class="text-sm font-bold text-gray-200">Indicadores de ${formatMonthName(chave)}</h3>
+          <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
+            ${cartao('PRs mergeadas', m.merged.length, `${m.criadas.length} criadas no mês`, variacao(m.merged.length, ant.merged.length, rotAnt))}
+            ${cartao('Valor do mês', brl(m.valor), 'soma das mergeadas', variacao(m.valor, ant.valor, rotAnt))}
+            ${cartao('Valor médio por PR', m.ticket == null ? '—' : brl(m.ticket), 'valor ÷ mergeadas', variacao(m.ticket, ant.ticket, rotAnt))}
+            ${cartao('Taxa de merge', fmtPct(m.taxaMerge), `${m.merged.length} mergeadas · ${m.fechadas.length} fechadas sem merge`, variacao(m.taxaMerge, ant.taxaMerge, rotAnt))}
+            ${cartao('Tempo médio até o merge', fmtDias(m.tempoMedio), `mediana ${fmtDias(m.tempoMediano)}`, variacao(m.tempoMedio, ant.tempoMedio, rotAnt, true))}
+            ${cartao('Linhas alteradas', fmtNum(m.linhas), m.linhasPorPR == null ? '' : `${fmtNum(Math.round(m.linhasPorPR))} por PR, em média`, variacao(m.linhas, ant.linhas, rotAnt))}
+            ${cartao('Em aberto hoje', abertas.length, `previsão de ${brl(previsaoAbertas)}`, '<span class="text-gray-500">não depende do mês</span>')}
+            ${cartao('Total do mês + abertas', brl(m.valor + previsaoAbertas), 'mergeadas do mês + previsão das abertas', '')}
+          </div>
+        </section>`;
+
+      // Por complexidade
+      const semTamanho = m.merged.filter(p => !faixaDaPR(p));
+      const linhasFaixa = [...FAIXAS.map(f => ({ nome: f.nome, cls: f.cls, prs: m.merged.filter(p => faixaDaPR(p) === f) })),
+        ...(semTamanho.length ? [{ nome: 'Sem tamanho', cls: 'border-gray-700 text-gray-400', prs: semTamanho }] : [])];
+      const complexidade = `
+        <section class="space-y-3">
+          <h3 class="text-sm font-bold text-gray-200">Por complexidade</h3>
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            ${linhasFaixa.map(f => {
+              const v = f.prs.reduce((a, p) => a + valorDaPR(p), 0);
+              return `<div class="bg-gray-900/60 border border-gray-800 p-4 rounded-xl space-y-2">
+                <span class="text-[10px] font-semibold px-2 py-0.5 rounded-full border ${f.cls}">${f.nome}</span>
+                <p class="text-xl font-extrabold text-gray-100">${f.prs.length} PR${f.prs.length === 1 ? '' : 's'} · ${brl(v)}</p>
+                <p class="text-[11px] text-gray-400">${fmtPct(m.merged.length ? f.prs.length / m.merged.length : null)} das PRs · ${fmtPct(m.valor ? v / m.valor : null)} do valor</p>
+              </div>`;
+            }).join('')}
+          </div>
+        </section>`;
+
+      // Por repositório
+      const repos = REPOS.filter(r => state.selectedRepos.has(r.fullName));
+      const porRepo = `
+        <section class="space-y-3">
+          <h3 class="text-sm font-bold text-gray-200">Por repositório</h3>
+          <div class="bg-gray-900/60 border border-gray-800 p-4 rounded-xl space-y-3">
+            ${repos.map(r => {
+              const prs = m.merged.filter(p => p.repo === r.fullName);
+              const v = prs.reduce((a, p) => a + valorDaPR(p), 0);
+              const share = m.valor ? v / m.valor : 0;
+              return `<div class="space-y-1">
+                <div class="flex justify-between text-xs"><span class="font-mono text-gray-300">${r.nome}</span>
+                  <span class="text-gray-400">${prs.length} PR${prs.length === 1 ? '' : 's'} · <strong class="text-gray-100">${brl(v)}</strong> · ${fmtPct(m.valor ? share : null)}</span></div>
+                <div class="h-2 bg-gray-800 rounded-full overflow-hidden"><div class="h-full bg-emerald-500 rounded-full" style="width:${(share * 100).toFixed(1)}%"></div></div>
+              </div>`;
+            }).join('')}
+          </div>
+        </section>`;
+
+      conteudo.innerHTML = indicadores + complexidade + porRepo + graficoEvolucao(chave) + tabelaDoMes(m);
+      lucide.createIcons();
+    }
+
+    // Barras do valor mergeado nos 6 meses até o mês escolhido. Uma série só: sem legenda;
+    // o mês escolhido fica destacado e é o único com rótulo; os outros aparecem no hover.
+    function graficoEvolucao(chave) {
+      const meses = Array.from({ length: 6 }, (_, i) => mesAnterior(chave, 5 - i));
+      const dados = meses.map(k => { const x = metricasDoMes(k); return { k, valor: x.valor, n: x.merged.length }; });
+      const W = 600, H = 220, padL = 44, padR = 8, padT = 22, padB = 26;
+      const max = Math.max(...dados.map(d => d.valor), 1);
+      const passo = Math.pow(10, Math.floor(Math.log10(max)));
+      const topo = Math.ceil(max / passo) * passo;
+      const y = v => padT + (H - padT - padB) * (1 - v / topo);
+      const col = (W - padL - padR) / dados.length, barW = Math.min(44, col * 0.5);
+      const grade = [0, 0.5, 1].map(f => {
+        const v = topo * f;
+        return `<line x1="${padL}" x2="${W - padR}" y1="${y(v)}" y2="${y(v)}" stroke="#1f2937" stroke-width="1"/>
+          <text x="${padL - 6}" y="${y(v) + 3}" text-anchor="end" font-size="10" fill="#6b7280">${v >= 1000 ? (v / 1000).toLocaleString('pt-BR') + ' mil' : v}</text>`;
+      }).join('');
+      const barras = dados.map((d, i) => {
+        const cx = padL + col * i + col / 2, atual = d.k === chave;
+        const h = Math.max(0, y(0) - y(d.valor)), r = Math.min(4, h / 2);
+        const x0 = cx - barW / 2, y0 = y(d.valor);
+        // Topo arredondado, base reta na linha do zero.
+        const barra = h > 0 ? `<path d="M${x0},${y(0)} V${y0 + r} Q${x0},${y0} ${x0 + r},${y0} H${x0 + barW - r} Q${x0 + barW},${y0} ${x0 + barW},${y0 + r} V${y(0)} Z"
+            fill="#10b981" fill-opacity="${atual ? 1 : 0.45}"/>` : '';
+        return `<g class="barra-mes" data-tip="${formatMonthName(d.k)}: ${d.n} PR${d.n === 1 ? '' : 's'} · ${brl(d.valor)}">
+          <rect x="${padL + col * i}" y="${padT}" width="${col}" height="${H - padT - padB}" fill="transparent"/>
+          ${barra}
+          ${atual ? `<text x="${cx}" y="${y0 - 6}" text-anchor="middle" font-size="11" font-weight="700" fill="#e5e7eb">${brl(d.valor)}</text>` : ''}
+          <text x="${cx}" y="${H - 8}" text-anchor="middle" font-size="10" fill="${atual ? '#e5e7eb' : '#6b7280'}" font-weight="${atual ? 700 : 400}">${mesCurto(d.k)}</text>
+        </g>`;
+      }).join('');
+      return `
+        <section class="space-y-3">
+          <h3 class="text-sm font-bold text-gray-200">Evolução do valor mergeado (6 meses)</h3>
+          <div class="relative bg-gray-900/60 border border-gray-800 p-4 rounded-xl" onmousemove="tooltipGrafico(event)" onmouseleave="tooltipGrafico(null)">
+            <svg viewBox="0 0 ${W} ${H}" class="w-full h-auto" role="img" aria-label="Valor mergeado por mês">${grade}${barras}</svg>
+            <div id="grafico-tooltip" class="hidden absolute pointer-events-none bg-gray-950 border border-gray-700 text-[11px] text-gray-100 px-2 py-1 rounded-md shadow-lg whitespace-nowrap"></div>
+          </div>
+        </section>`;
+    }
+
+    function tooltipGrafico(ev) {
+      const tip = document.getElementById('grafico-tooltip');
+      const g = ev && ev.target.closest('.barra-mes');
+      if (!g) { tip.classList.add('hidden'); return; }
+      const box = ev.currentTarget.getBoundingClientRect();
+      tip.textContent = g.dataset.tip;
+      tip.classList.remove('hidden');
+      const x = Math.min(ev.clientX - box.left + 12, box.width - tip.offsetWidth - 4);
+      tip.style.left = `${Math.max(4, x)}px`;
+      tip.style.top = `${ev.clientY - box.top - 30}px`;
+    }
+
+    function tabelaDoMes(m) {
+      if (!m.merged.length) return `<section class="bg-gray-900/40 border border-gray-800 rounded-xl p-6 text-center text-gray-500 text-xs">Nenhuma PR mergeada em ${formatMonthName(m.chave)}.</section>`;
+      const linhas = m.merged.map(p => {
+        const f = faixaDaPR(p);
+        return `<tr class="border-b border-gray-800/60">
+          <td class="py-2 px-2 whitespace-nowrap"><a href="${esc(p.url)}" target="_blank" rel="noopener noreferrer" class="text-emerald-400 hover:underline font-mono">${nomeDoRepo(p.repo)}#${p.number}</a></td>
+          <td class="py-2 px-2 text-gray-200">${esc(p.title)}</td>
+          <td class="py-2 px-2 text-gray-400 whitespace-nowrap">${new Date(p.merged_at).toLocaleDateString('pt-BR')}</td>
+          <td class="py-2 px-2 text-gray-400 text-right font-mono">${linhasDaPR(p) ?? '—'}</td>
+          <td class="py-2 px-2">${f ? `<span class="text-[10px] font-semibold px-2 py-0.5 rounded-full border ${f.cls}">${f.nome}</span>` : '—'}</td>
+          <td class="py-2 px-2 text-right text-gray-100 font-semibold whitespace-nowrap">${brl(valorDaPR(p))}</td>
+        </tr>`;
+      }).join('');
+      return `
+        <section class="space-y-3">
+          <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+            <h3 class="text-sm font-bold text-gray-200">PRs mergeadas em ${formatMonthName(m.chave)}</h3>
+            <div class="flex gap-2">
+              <button onclick="copiarTabela('${m.chave}', this)" class="flex items-center gap-1.5 bg-gray-800 hover:bg-gray-700 text-gray-200 text-xs font-medium px-3 py-1.5 rounded-lg border border-gray-700"><i data-lucide="copy" class="w-3.5 h-3.5"></i><span>Copiar tabela</span></button>
+              <button onclick="baixarCSV('${m.chave}')" class="flex items-center gap-1.5 bg-gray-800 hover:bg-gray-700 text-gray-200 text-xs font-medium px-3 py-1.5 rounded-lg border border-gray-700"><i data-lucide="download" class="w-3.5 h-3.5"></i>Baixar CSV</button>
+            </div>
+          </div>
+          <div class="overflow-x-auto bg-gray-900/60 border border-gray-800 rounded-xl">
+            <table class="w-full text-xs">
+              <thead class="text-gray-400 text-[10px] uppercase tracking-wider"><tr class="border-b border-gray-800">
+                <th class="text-left py-2 px-2">PR</th><th class="text-left py-2 px-2">Título</th><th class="text-left py-2 px-2">Merge</th>
+                <th class="text-right py-2 px-2">Linhas</th><th class="text-left py-2 px-2">Complexidade</th><th class="text-right py-2 px-2">Preço</th></tr></thead>
+              <tbody>${linhas}</tbody>
+              <tfoot><tr><td colspan="5" class="py-2 px-2 font-bold text-gray-200">Total (${m.merged.length} PRs)</td>
+                <td class="py-2 px-2 text-right font-black text-emerald-400 whitespace-nowrap">${brl(m.valor)}</td></tr></tfoot>
+            </table>
+          </div>
+        </section>`;
+    }
+
+    // Mesmo formato da planilha de pagamento: PR | Título | Preço, com a linha de Total.
+    function linhasExportacao(chave) {
+      const m = metricasDoMes(chave);
+      const num = v => v.toFixed(2).replace('.', ',');
+      return [['PR', 'Título', 'Preço'],
+        ...m.merged.map(p => [`${nomeDoRepo(p.repo)}#${p.number}`, p.title, num(valorDaPR(p))]),
+        ['Total', '', num(m.valor)]];
+    }
+
+    async function copiarTabela(chave, botao) {
+      const tsv = linhasExportacao(chave).map(l => l.map(c => String(c).replace(/[\t\n]/g, ' ')).join('\t')).join('\n');
+      const btn = botao.querySelector('span');
+      try {
+        await navigator.clipboard.writeText(tsv);
+        btn.textContent = 'Copiada!';
+      } catch (_) {
+        btn.textContent = 'Não foi possível copiar';
+      }
+      setTimeout(() => { btn.textContent = 'Copiar tabela'; }, 2000);
+    }
+
+    function baixarCSV(chave) {
+      const csv = linhasExportacao(chave).map(l => l.map(c => `"${String(c).replace(/"/g, '""')}"`).join(';')).join('\r\n');
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' }));
+      a.download = `prs-${chave}.csv`;
+      a.click();
+      URL.revokeObjectURL(a.href);
+    }
+
     window.addEventListener('DOMContentLoaded', () => {
       renderLegendaFaixas();
       renderFiltroRepos();
+      setView('painel');
       lucide.createIcons();
       renderEmptyState();
     });
@@ -416,6 +723,7 @@
 
         populateDropdowns();
         renderApp();
+        renderRelatorio();
       } catch (err) {
         showError(err.message || 'Erro ao comunicar com a API do GitHub.');
       } finally {
