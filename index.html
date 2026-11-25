@@ -128,41 +128,32 @@
       </div>
     </div>
 
-    <!-- CALCULADORA -->
+    <!-- PREVISÃO POR COMPLEXIDADE -->
     <div class="bg-gray-900/70 border border-gray-800 rounded-2xl p-4 sm:p-6 shadow-xl space-y-4">
       <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-gray-800 pb-3">
         <div class="flex items-center gap-2">
-          <i data-lucide="calculator" class="w-5 h-5 text-emerald-400"></i>
-          <h2 class="text-base sm:text-lg font-bold text-gray-100">Calculadora de Rendimento por PR</h2>
+          <i data-lucide="layers" class="w-5 h-5 text-emerald-400"></i>
+          <h2 class="text-base sm:text-lg font-bold text-gray-100">Previsão de Rendimento por Complexidade</h2>
         </div>
-        <label class="flex items-center gap-2 cursor-pointer select-none text-xs text-gray-400">
-          <input type="checkbox" id="calc-include-open" onchange="renderApp()" class="w-4 h-4 rounded bg-gray-950 border-gray-700 text-emerald-600">
-          <span>Incluir PRs em Aberto no cálculo</span>
-        </label>
+        <div id="faixas-legenda" class="flex flex-wrap gap-1.5"></div>
       </div>
+      <p class="text-[11px] text-gray-500">
+        A complexidade vem do tamanho da PR (linhas adicionadas + removidas). PRs fechadas sem merge não entram.
+        O valor de cada PR pode ser ajustado no próprio card.
+      </p>
 
-      <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 items-end">
-        <div>
-          <label class="block text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5">Moeda</label>
-          <select id="calc-currency" onchange="renderApp()" class="w-full bg-gray-950 border border-gray-800 text-xs sm:text-sm text-gray-200 rounded-lg p-2.5 focus:outline-none focus:border-emerald-500">
-            <option value="BRL">Real Brasileiro (R$)</option>
-            <option value="USD">Dólar Americano ($)</option>
-            <option value="EUR">Euro (€)</option>
-          </select>
+      <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div class="bg-gray-950 border border-gray-800 p-3 sm:p-4 rounded-xl">
+          <span class="text-[10px] text-gray-400 block">Mergeadas (<span id="calc-merged-count">0</span>)</span>
+          <span id="calc-merged-total" class="text-xl sm:text-2xl font-black text-purple-400">R$ 0,00</span>
         </div>
-        <div>
-          <label class="block text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5">Valor Padrão por PR</label>
-          <div class="relative">
-            <span id="currency-symbol" class="absolute left-3 top-1/2 -translate-y-1/2 text-xs text-gray-500">R$</span>
-            <input type="number" id="calc-default-rate" value="150" step="10" min="0" oninput="renderApp()" class="w-full bg-gray-950 border border-gray-800 text-xs sm:text-sm text-gray-200 rounded-lg pl-9 pr-3 py-2.5 focus:outline-none focus:border-emerald-500"/>
-          </div>
+        <div class="bg-gray-950 border border-gray-800 p-3 sm:p-4 rounded-xl">
+          <span class="text-[10px] text-gray-400 block">Em aberto, previsão (<span id="calc-open-count">0</span>)</span>
+          <span id="calc-open-total" class="text-xl sm:text-2xl font-black text-amber-400">R$ 0,00</span>
         </div>
-        <div class="bg-gray-950 border border-gray-800 p-3 sm:p-4 rounded-xl flex items-center justify-between">
-          <div>
-            <span class="text-[10px] text-gray-400 block">Total Estimado</span>
-            <span id="calc-grand-total" class="text-xl sm:text-2xl font-black text-emerald-400">R$ 0,00</span>
-          </div>
-          <span class="text-[10px] bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-2 py-0.5 rounded font-mono">Dinâmico</span>
+        <div class="bg-gray-950 border border-gray-800 p-3 sm:p-4 rounded-xl">
+          <span class="text-[10px] text-gray-400 block">Total</span>
+          <span id="calc-grand-total" class="text-xl sm:text-2xl font-black text-emerald-400">R$ 0,00</span>
         </div>
       </div>
     </div>
@@ -205,7 +196,62 @@
       open: `<span class="bg-amber-500/10 text-amber-400 border border-amber-500/20 text-[10px] font-semibold px-2 py-0.5 rounded-full">Em Aberto</span>`
     };
 
+    // Faixas calibradas com as PRs pagas de outubro/2026 (linhas = adições + remoções):
+    // 6, 17 e 23 linhas → R$ 25; 39, 75 e 117 → R$ 50; 305 → R$ 90.
+    const FAIXAS = [
+      { maxLinhas: 30, nome: 'Baixa', valor: 25, cls: 'bg-sky-500/10 text-sky-400 border-sky-500/20' },
+      { maxLinhas: 200, nome: 'Média', valor: 50, cls: 'bg-orange-500/10 text-orange-400 border-orange-500/20' },
+      { maxLinhas: Infinity, nome: 'Alta', valor: 90, cls: 'bg-rose-500/10 text-rose-400 border-rose-500/20' }
+    ];
+
+    const brl = v => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
+
+    function linhasDaPR(pr) {
+      return pr.additions == null ? null : pr.additions + pr.deletions;
+    }
+
+    function faixaDaPR(pr) {
+      const linhas = linhasDaPR(pr);
+      return linhas == null ? null : FAIXAS.find(f => linhas <= f.maxLinhas);
+    }
+
+    // Fechada sem merge não vale nada; nas outras, o valor ajustado à mão vence o da faixa.
+    function valorDaPR(pr) {
+      if (pr.status === 'closed') return 0;
+      if (state.customRates[pr.id] !== undefined) return state.customRates[pr.id];
+      return faixaDaPR(pr)?.valor ?? 0;
+    }
+
+    function renderLegendaFaixas() {
+      let min = 1;
+      document.getElementById('faixas-legenda').innerHTML = FAIXAS.map(f => {
+        const faixa = f.maxLinhas === Infinity ? `> ${min - 1}` : `${min}–${f.maxLinhas}`;
+        min = f.maxLinhas + 1;
+        return `<span class="text-[10px] font-semibold px-2 py-0.5 rounded-full border ${f.cls}">${f.nome} · ${faixa} linhas · ${brl(f.valor)}</span>`;
+      }).join('');
+    }
+
+    // A busca não traz o tamanho da PR: busca adições/remoções em /pulls/{n}, poucas de cada vez.
+    async function carregarTamanhos(prs, headers) {
+      const fila = prs.filter(pr => pr.status !== 'closed');
+      const trabalhar = async () => {
+        while (fila.length) {
+          const pr = fila.shift();
+          try {
+            const res = await fetch(`https://api.github.com/repos/${pr.repo}/pulls/${pr.number}`, { headers });
+            if (!res.ok) continue;
+            const dados = await res.json();
+            pr.additions = dados.additions;
+            pr.deletions = dados.deletions;
+            pr.changed_files = dados.changed_files;
+          } catch (_) { /* fica sem tamanho; o valor pode ser ajustado no card */ }
+        }
+      };
+      await Promise.all(Array.from({ length: 6 }, trabalhar));
+    }
+
     window.addEventListener('DOMContentLoaded', () => {
+      renderLegendaFaixas();
       lucide.createIcons();
       renderEmptyState();
     });
@@ -293,9 +339,15 @@
             merged_at: mergedAt,
             closed_at: item.closed_at,
             url: item.html_url,
-            draft: item.draft || false
+            draft: item.draft || false,
+            additions: null,
+            deletions: null,
+            changed_files: null
           };
         });
+
+        btn.querySelector('span').textContent = 'Medindo PRs...';
+        await carregarTamanhos(state.prs, headers);
 
         populateDropdowns();
         renderApp();
@@ -304,6 +356,7 @@
       } finally {
         btn.disabled = false;
         btn.classList.remove('opacity-50');
+        btn.querySelector('span').textContent = 'Carregar PRs';
       }
     }
 
@@ -384,23 +437,17 @@
       state.selectedRepo = document.getElementById('filter-repo').value;
       state.selectedMonth = document.getElementById('filter-month').value;
 
-      const currency = document.getElementById('calc-currency').value;
-      const symbolMap = { BRL: 'R$', USD: '$', EUR: '€' };
-      document.getElementById('currency-symbol').textContent = symbolMap[currency] || 'R$';
-
-      const defaultRate = parseFloat(document.getElementById('calc-default-rate').value) || 0;
-      const includeOpenInCalc = document.getElementById('calc-include-open').checked;
-
-      const filteredPRs = state.prs.filter(pr => {
-        if (state.currentTab !== 'all' && pr.status !== state.currentTab) return false;
+      // Números e totais seguem repo e mês, mas não a aba: a aba só escolhe a lista de baixo.
+      const periodPRs = state.prs.filter(pr => {
         if (state.selectedRepo !== 'ALL' && pr.repo !== state.selectedRepo) return false;
         if (state.selectedMonth !== 'ALL' && getPRMonthKey(pr) !== state.selectedMonth) return false;
         return true;
       });
+      const filteredPRs = periodPRs.filter(pr => state.currentTab === 'all' || pr.status === state.currentTab);
 
-      const mergedPRs = filteredPRs.filter(p => p.status === 'merged');
-      const openPRs = filteredPRs.filter(p => p.status === 'open');
-      const closedPRs = filteredPRs.filter(p => p.status === 'closed');
+      const mergedPRs = periodPRs.filter(p => p.status === 'merged');
+      const openPRs = periodPRs.filter(p => p.status === 'open');
+      const closedPRs = periodPRs.filter(p => p.status === 'closed');
 
       document.getElementById('kpi-merged').textContent = mergedPRs.length;
       document.getElementById('kpi-open').textContent = openPRs.length;
@@ -415,16 +462,16 @@
       });
       document.getElementById('kpi-avg-time').textContent = `${closedCount > 0 ? (totalDays / closedCount).toFixed(1) : 0}d`;
 
-      let totalValue = 0;
-      filteredPRs.forEach(pr => {
-        if (pr.status === 'merged' || (includeOpenInCalc && pr.status === 'open')) {
-          totalValue += state.customRates[pr.id] !== undefined ? state.customRates[pr.id] : defaultRate;
-        }
-      });
+      const soma = prs => prs.reduce((acc, pr) => acc + valorDaPR(pr), 0);
+      const mergedTotal = soma(mergedPRs);
+      const openTotal = soma(openPRs);
 
-      const formattedTotal = new Intl.NumberFormat('pt-BR', { style: 'currency', currency }).format(totalValue);
-      document.getElementById('kpi-total-earnings').textContent = formattedTotal;
-      document.getElementById('calc-grand-total').textContent = formattedTotal;
+      document.getElementById('calc-merged-count').textContent = mergedPRs.length;
+      document.getElementById('calc-open-count').textContent = openPRs.length;
+      document.getElementById('calc-merged-total').textContent = brl(mergedTotal);
+      document.getElementById('calc-open-total').textContent = brl(openTotal);
+      document.getElementById('calc-grand-total').textContent = brl(mergedTotal + openTotal);
+      document.getElementById('kpi-total-earnings').textContent = brl(mergedTotal + openTotal);
 
       const container = document.getElementById('prs-container');
       if (filteredPRs.length === 0) {
@@ -434,8 +481,20 @@
       }
 
       container.innerHTML = filteredPRs.map(pr => {
-        const rateValue = state.customRates[pr.id] !== undefined ? state.customRates[pr.id] : defaultRate;
         const monthKey = getPRMonthKey(pr);
+        const faixa = faixaDaPR(pr);
+        const ajustado = state.customRates[pr.id] !== undefined;
+        const tamanho = linhasDaPR(pr) == null
+          ? 'tamanho indisponível'
+          : `+${pr.additions} −${pr.deletions} · ${pr.changed_files} arquivo${pr.changed_files === 1 ? '' : 's'}`;
+        const complexidade = pr.status === 'closed' ? '' : `
+              <div class="flex flex-wrap items-center gap-1.5 text-[11px] text-gray-400">
+                ${faixa
+                  ? `<span class="font-semibold px-2 py-0.5 rounded-full border ${faixa.cls}">Complexidade ${faixa.nome}</span>`
+                  : `<span class="font-semibold px-2 py-0.5 rounded-full border border-gray-700 text-gray-400">Sem complexidade</span>`}
+                <span class="font-mono">${tamanho}</span>
+                ${ajustado ? `<span class="text-gray-500">· valor ajustado (faixa: ${brl(faixa?.valor ?? 0)})</span>` : ''}
+              </div>`;
 
         return `
           <div class="bg-gray-900/60 border border-gray-800/80 rounded-xl p-3.5 sm:p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
@@ -449,12 +508,13 @@
                 <a href="${pr.url}" target="_blank" rel="noopener noreferrer">${pr.title}</a>
               </h4>
               <div class="text-[11px] text-gray-400">Mês Contábil: <strong class="text-gray-200">${formatMonthName(monthKey)}</strong></div>
+              ${complexidade}
             </div>
             ${pr.status === 'closed'
               ? `<div class="text-[11px] text-gray-500 bg-gray-950 px-3 py-2 rounded-lg border border-gray-800">Fechada sem merge: não entra no cálculo</div>`
               : `<div class="flex items-center gap-1 bg-gray-950 p-2 rounded-lg border border-gray-800">
-              <span class="text-xs text-gray-400">${symbolMap[currency]}</span>
-              <input type="number" value="${rateValue}" onchange="updateCustomRate(${pr.id}, this.value)" class="w-20 bg-gray-900 border border-gray-700 rounded text-xs text-right text-emerald-400 px-2 py-1 font-mono focus:outline-none focus:border-emerald-500"/>
+              <span class="text-xs text-gray-400">R$</span>
+              <input type="number" value="${valorDaPR(pr)}" onchange="updateCustomRate(${pr.id}, this.value)" class="w-20 bg-gray-900 border border-gray-700 rounded text-xs text-right text-emerald-400 px-2 py-1 font-mono focus:outline-none focus:border-emerald-500"/>
             </div>`}
           </div>
         `;
