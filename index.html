@@ -158,6 +158,22 @@
       </div>
     </div>
 
+    <!-- RESUMO MENSAL -->
+    <div class="bg-gray-900/70 border border-gray-800 rounded-2xl p-4 sm:p-6 shadow-xl space-y-3">
+      <div class="flex items-center gap-2 border-b border-gray-800 pb-3">
+        <i data-lucide="calendar-range" class="w-5 h-5 text-emerald-400"></i>
+        <h2 class="text-base sm:text-lg font-bold text-gray-100">Resumo Mensal das PRs Mergeadas</h2>
+      </div>
+      <p class="text-[11px] text-gray-500">Soma os repositórios marcados no filtro "Repos". Clique num mês para filtrar a lista.</p>
+      <div class="overflow-x-auto">
+        <table class="w-full text-xs">
+          <thead id="resumo-mensal-head" class="text-gray-400 text-[10px] uppercase tracking-wider"></thead>
+          <tbody id="resumo-mensal-body"></tbody>
+          <tfoot id="resumo-mensal-foot"></tfoot>
+        </table>
+      </div>
+    </div>
+
     <!-- LISTAGEM -->
     <div class="space-y-4">
       <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-4 bg-gray-900/40 p-3.5 rounded-xl border border-gray-800/60">
@@ -167,10 +183,10 @@
           <button onclick="setTab('open')" id="tab-open" class="flex-1 lg:flex-none px-3 py-1.5 text-xs font-medium rounded-md transition-colors text-gray-400 hover:text-gray-200 whitespace-nowrap">Em Aberto</button>
           <button onclick="setTab('all')" id="tab-all" class="flex-1 lg:flex-none px-3 py-1.5 text-xs font-medium rounded-md transition-colors text-gray-400 hover:text-gray-200 whitespace-nowrap">Todas</button>
         </div>
-        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 w-full lg:w-auto">
+        <div class="flex flex-col sm:flex-row sm:items-center gap-3 w-full lg:w-auto">
           <div class="flex items-center gap-2">
-            <label class="text-xs text-gray-400 font-medium whitespace-nowrap">Repo:</label>
-            <select id="filter-repo" onchange="renderApp()" class="w-full bg-gray-950 border border-gray-800 text-xs text-gray-200 rounded-lg px-2.5 py-1.5 focus:outline-none focus:border-emerald-500"><option value="ALL">Todos os Repositórios</option></select>
+            <span class="text-xs text-gray-400 font-medium whitespace-nowrap">Repos:</span>
+            <div id="filter-repos" class="flex flex-wrap gap-1.5"></div>
           </div>
           <div class="flex items-center gap-2">
             <label class="text-xs text-gray-400 font-medium whitespace-nowrap">Mês:</label>
@@ -188,7 +204,50 @@
   </footer>
 
   <script>
-    let state = { prs: [], currentTab: 'merged', selectedRepo: 'ALL', selectedMonth: 'ALL', customRates: {} };
+    // Só estes repositórios entram na busca, nos filtros e nos totais.
+    const REPOS = [
+      { fullName: 'nebbie-corporation/morador-online', nome: 'morador-online' },
+      { fullName: 'nebbie-corporation/morador-online-flutter', nome: 'morador-online-flutter' }
+    ];
+    const nomeDoRepo = fullName => REPOS.find(r => r.fullName === fullName)?.nome ?? fullName;
+
+    let state = {
+      prs: [],
+      currentTab: 'merged',
+      selectedRepos: new Set(REPOS.map(r => r.fullName)),
+      selectedMonth: 'ALL',
+      customRates: {}
+    };
+
+    function renderFiltroRepos() {
+      document.getElementById('filter-repos').innerHTML = REPOS.map(r => {
+        const ativo = state.selectedRepos.has(r.fullName);
+        const cls = ativo
+          ? 'bg-emerald-600 text-white border-emerald-500'
+          : 'bg-gray-950 text-gray-400 border-gray-800 hover:text-gray-200';
+        return `<button type="button" onclick="toggleRepo('${r.fullName}')" aria-pressed="${ativo}"
+          class="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium rounded-lg border transition-colors whitespace-nowrap ${cls}">
+          <span class="inline-block w-3 h-3 rounded-sm border ${ativo ? 'bg-white border-white' : 'border-gray-600'}"></span>${r.nome}</button>`;
+      }).join('');
+    }
+
+    // Pelo menos um repositório fica marcado: desmarcar o último não faz nada.
+    function toggleRepo(fullName) {
+      if (state.selectedRepos.has(fullName)) {
+        if (state.selectedRepos.size === 1) return;
+        state.selectedRepos.delete(fullName);
+      } else {
+        state.selectedRepos.add(fullName);
+      }
+      renderFiltroRepos();
+      renderApp();
+    }
+
+    function selecionarMes(monthKey) {
+      const select = document.getElementById('filter-month');
+      select.value = select.value === monthKey ? 'ALL' : monthKey;
+      renderApp();
+    }
 
     const STATUS_BADGES = {
       merged: `<span class="bg-purple-500/10 text-purple-400 border border-purple-500/20 text-[10px] font-semibold px-2 py-0.5 rounded-full">Mergeada</span>`,
@@ -252,6 +311,7 @@
 
     window.addEventListener('DOMContentLoaded', () => {
       renderLegendaFaixas();
+      renderFiltroRepos();
       lucide.createIcons();
       renderEmptyState();
     });
@@ -310,18 +370,23 @@
         document.getElementById('auth-username').textContent = `@${username}`;
         document.getElementById('auth-status-container').classList.remove('hidden');
 
-        // 2. Buscar PRs usando o autor autenticado
-        const query = encodeURIComponent(`type:pr author:${username}`);
-        const searchRes = await fetch(`https://api.github.com/search/issues?q=${query}&per_page=100`, { headers });
-        
-        if (!searchRes.ok) {
-          const errBody = await searchRes.json().catch(() => ({}));
-          throw new Error(errBody.message || `Erro na API do GitHub (${searchRes.status}). Verifique se marcou o escopo 'repo'.`);
+        // 2. Buscar as PRs do autor só nos repositórios de REPOS, página a página
+        //    (a busca devolve no máximo 100 por página e 1000 no total).
+        const repoFilter = REPOS.map(r => `repo:${r.fullName}`).join(' ');
+        const query = encodeURIComponent(`type:pr author:${username} ${repoFilter}`);
+        const items = [];
+        for (let page = 1; page <= 10; page++) {
+          const searchRes = await fetch(`https://api.github.com/search/issues?q=${query}&per_page=100&page=${page}`, { headers });
+          if (!searchRes.ok) {
+            const errBody = await searchRes.json().catch(() => ({}));
+            throw new Error(errBody.message || `Erro na API do GitHub (${searchRes.status}). Verifique se marcou o escopo 'repo'.`);
+          }
+          const searchData = await searchRes.json();
+          items.push(...searchData.items);
+          if (searchData.items.length < 100 || items.length >= searchData.total_count) break;
         }
 
-        const searchData = await searchRes.json();
-        
-        state.prs = searchData.items.map(item => {
+        state.prs = items.map(item => {
           const repoFullName = item.repository_url ? item.repository_url.replace('https://api.github.com/repos/', '') : 'repo/desconhecido';
           // A busca devolve state 'open' ou 'closed'; uma PR fechada só foi mergeada se tiver merged_at.
           const mergedAt = item.pull_request?.merged_at || null;
@@ -382,22 +447,51 @@
     }
 
     function populateDropdowns() {
-      const repoSelect = document.getElementById('filter-repo');
       const monthSelect = document.getElementById('filter-month');
-
-      const currentRepo = repoSelect.value;
       const currentMonth = monthSelect.value;
 
-      const repos = Array.from(new Set(state.prs.map(p => p.repo))).sort();
-      repoSelect.innerHTML = '<option value="ALL">Todos os Repositórios</option>' + 
-        repos.map(r => `<option value="${r}">${r}</option>`).join('');
-
       const months = Array.from(new Set(state.prs.map(p => getPRMonthKey(p)))).sort().reverse();
-      monthSelect.innerHTML = '<option value="ALL">Todos os Meses</option>' + 
+      monthSelect.innerHTML = '<option value="ALL">Todos os Meses</option>' +
         months.map(m => `<option value="${m}">${formatMonthName(m)}</option>`).join('');
 
-      if (repos.includes(currentRepo)) repoSelect.value = currentRepo;
       if (months.includes(currentMonth)) monthSelect.value = currentMonth;
+    }
+
+    // Uma linha por mês com PR mergeada: quantidade e valor de cada repo marcado, e o total do mês.
+    function renderResumoMensal() {
+      const repos = REPOS.filter(r => state.selectedRepos.has(r.fullName));
+      const merged = state.prs.filter(p => p.status === 'merged' && state.selectedRepos.has(p.repo));
+      const meses = Array.from(new Set(merged.map(getPRMonthKey))).sort().reverse();
+
+      const celula = prs => `${prs.length} PR${prs.length === 1 ? '' : 's'} · <span class="text-gray-200 font-semibold">${brl(prs.reduce((a, p) => a + valorDaPR(p), 0))}</span>`;
+      const th = 'text-left font-semibold py-2 px-2';
+      const td = 'py-2 px-2 whitespace-nowrap';
+
+      document.getElementById('resumo-mensal-head').innerHTML = `<tr class="border-b border-gray-800">
+        <th class="${th}">Mês</th>${repos.map(r => `<th class="${th}">${r.nome}</th>`).join('')}<th class="${th} text-emerald-400">Total do mês</th></tr>`;
+
+      if (meses.length === 0) {
+        document.getElementById('resumo-mensal-body').innerHTML = `<tr><td colspan="${repos.length + 2}" class="py-4 text-center text-gray-500">Nenhuma PR mergeada.</td></tr>`;
+        document.getElementById('resumo-mensal-foot').innerHTML = '';
+        return;
+      }
+
+      document.getElementById('resumo-mensal-body').innerHTML = meses.map(m => {
+        const doMes = merged.filter(p => getPRMonthKey(p) === m);
+        const ativo = state.selectedMonth === m;
+        return `<tr onclick="selecionarMes('${m}')" data-mes="${m}"
+            class="border-b border-gray-800/60 cursor-pointer transition-colors ${ativo ? 'bg-emerald-500/10' : 'hover:bg-gray-800/40'}">
+          <td class="${td} font-semibold ${ativo ? 'text-emerald-400' : 'text-gray-200'}">${formatMonthName(m)}</td>
+          ${repos.map(r => `<td class="${td} text-gray-400">${celula(doMes.filter(p => p.repo === r.fullName))}</td>`).join('')}
+          <td class="${td} text-gray-400">${celula(doMes).replace('text-gray-200', 'text-emerald-400')}</td>
+        </tr>`;
+      }).join('');
+
+      document.getElementById('resumo-mensal-foot').innerHTML = `<tr class="border-t border-gray-700">
+        <td class="${td} font-bold text-gray-200">Total geral</td>
+        ${repos.map(r => `<td class="${td} text-gray-400">${celula(merged.filter(p => p.repo === r.fullName))}</td>`).join('')}
+        <td class="${td} text-gray-400">${celula(merged).replace('text-gray-200', 'text-emerald-400')}</td>
+      </tr>`;
     }
 
     function setTab(tab) {
@@ -434,12 +528,12 @@
         return;
       }
 
-      state.selectedRepo = document.getElementById('filter-repo').value;
       state.selectedMonth = document.getElementById('filter-month').value;
+      renderResumoMensal();
 
-      // Números e totais seguem repo e mês, mas não a aba: a aba só escolhe a lista de baixo.
+      // Números e totais seguem repos e mês, mas não a aba: a aba só escolhe a lista de baixo.
       const periodPRs = state.prs.filter(pr => {
-        if (state.selectedRepo !== 'ALL' && pr.repo !== state.selectedRepo) return false;
+        if (!state.selectedRepos.has(pr.repo)) return false;
         if (state.selectedMonth !== 'ALL' && getPRMonthKey(pr) !== state.selectedMonth) return false;
         return true;
       });
@@ -501,7 +595,7 @@
             <div class="space-y-1.5 flex-1 min-w-0">
               <div class="flex flex-wrap items-center gap-1.5">
                 ${STATUS_BADGES[pr.status]}
-                <span class="text-xs font-mono text-gray-400">${pr.repo}</span>
+                <span class="text-xs font-mono text-gray-400">${nomeDoRepo(pr.repo)}</span>
                 <span class="text-xs text-gray-600 font-mono">#${pr.number}</span>
               </div>
               <h4 class="text-xs sm:text-sm font-semibold text-gray-100 hover:text-emerald-400 truncate">
